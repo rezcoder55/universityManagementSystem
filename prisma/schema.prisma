@@ -1,0 +1,176 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ----------------- Enums -----------------
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+  PARENT
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum FeeStatus {
+  PAID
+  PENDING
+  OVERDUE
+  CANCELLED
+}
+
+// ----------------- Models -----------------
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  fullName     String   @map("full_name")
+  phone        String
+  role         Role     @default(STUDENT)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  studentProfile Student?
+  teacherProfile Teacher?
+  parentChildren Student[] @relation("ParentChildren")
+
+  @@map("users")
+}
+
+model Class {
+  id           String   @id @default(uuid())
+  name         String // Example: Grade 10 - Section A
+  academicYear String   @map("academic_year") // Example: 2026-2027
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  students   Student[]
+  teachers   TeacherClass[]
+  attendance Attendance[]
+
+  @@map("classes")
+}
+
+model Student {
+  id          String  @id @default(uuid())
+  userId      String  @unique @map("user_id")
+  classId     String  @map("class_id")
+  parentId    String? @map("parent_id")
+  studentCode String  @unique @map("student_code")
+
+  // Relations
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  class       Class        @relation(fields: [classId], references: [id], onDelete: Restrict)
+  parent      User?        @relation("ParentChildren", fields: [parentId], references: [id], onDelete: SetNull)
+  attendance  Attendance[]
+  marks       Mark[]
+  feeVouchers FeeVoucher[]
+
+  @@map("students")
+}
+
+model Teacher {
+  id             String @id @default(uuid())
+  userId         String @unique @map("user_id")
+  specialization String // Subject or Department
+
+  // Relations
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  classes          TeacherClass[]
+  markedAttendance Attendance[]
+
+  @@map("teachers")
+}
+
+// Many-to-Many relation between Teachers and Classes
+model TeacherClass {
+  id        String @id @default(uuid())
+  teacherId String @map("teacher_id")
+  classId   String @map("class_id")
+
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, classId])
+  @@map("teacher_classes")
+}
+
+model Attendance {
+  id        String           @id @default(uuid())
+  studentId String           @map("student_id")
+  classId   String           @map("class_id")
+  teacherId String           @map("marked_by")
+  date      DateTime         @db.Date
+  status    AttendanceStatus @default(PRESENT)
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  student  Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class    Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  markedBy Teacher @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+
+  @@unique([studentId, date])
+  @@map("attendance")
+}
+
+model Subject {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  code        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  marks Mark[]
+}
+
+model Mark {
+  id            String   @id @default(uuid())
+  studentId     String   @map("student_id")
+  subjectId     String   @map("subject_id")
+  examType      String   @map("exam_type") // Midterm, Final, Monthly
+  marksObtained Float    @map("marks_obtained")
+  maxMarks      Float    @map("max_marks")
+  term          String // Semester 1 / Semester 2
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@map("marks")
+}
+
+model FeeVoucher {
+  id            String    @id @default(uuid())
+  voucherNumber String    @unique @map("voucher_number")
+  title         String
+  description   String?
+  studentId     String    @map("student_id")
+  amount        Float
+  dueDate       DateTime  @map("due_date") @db.Date
+  status        FeeStatus @default(PENDING)
+  paymentDate   DateTime? @map("payment_date")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@map("fee_vouchers")
+}
